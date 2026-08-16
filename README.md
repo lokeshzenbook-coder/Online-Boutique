@@ -56,8 +56,8 @@ Each service directory contains its source files and dependency manifests:
 
 ## Building
 
-Every service includes a `Dockerfile` for building its container image. Build
-and push each image to your own container registry, then deploy to EKS.
+Build and push each service image to your own container registry using your
+preferred container tooling, then deploy to EKS.
 
 ## Deployment to AWS EKS
 
