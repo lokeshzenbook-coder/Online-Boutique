@@ -66,9 +66,8 @@ infrastructure files are included.
 | [Docker Compose](https://docs.docker.com/compose/) | v2 | Included with Docker Desktop / Docker Engine plugin |
 | [git](https://git-scm.com/) | any | To clone the repository |
 
-> Each service builds from a `Dockerfile` in its own source directory. This
-> repository ships source and dependency files only, so add a `Dockerfile` per
-> service (or point the build contexts below at your own pre-built images).
+> Every service ships with a `Dockerfile` in its own source directory, so the
+> compose file below can build all images from scratch.
 
 ### Running everything with Docker Compose
 
@@ -184,7 +183,8 @@ services:
 
   loadgenerator:
     build: ./src/loadgenerator
-    command: ["locust", "--host", "http://frontend:8080"]
+    environment:
+      - FRONTEND_ADDR=frontend:8080
     ports:
       - "8089:8089"
     depends_on:
@@ -274,8 +274,9 @@ Key deployment notes:
     └── shoppingassistantservice  # Python
 ```
 
-Each service directory contains its source files and dependency manifests
-(`go.mod`, `package.json`, `requirements.txt`, `build.gradle`, `.csproj`, etc.).
+Each service directory contains its source files, dependency manifests
+(`go.mod`, `package.json`, `requirements.txt`, `build.gradle`, `.csproj`, etc.),
+and a `Dockerfile` for building its container image.
 
 ---
 
