@@ -1,0 +1,11 @@
+node_modules/
+.gradle/
+build/
+bin/
+obj/
+.vs/
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+*.log
