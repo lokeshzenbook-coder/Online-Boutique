@@ -1,45 +1,65 @@
-<div align="center">
+<p align="center">
+  <img src="docs/img/logo.svg" width="320" alt="Online Boutique" />
+</p>
 
-# Online Boutique
+<h1 align="center">Online Boutique</h1>
 
-### A Cloud-Native Microservices Demo Application
+<p align="center">
+  A cloud-native e-commerce demo built as <b>11 polyglot microservices</b>
+  communicating over <b>gRPC</b> — ready to deploy on <b>AWS EKS</b> or spin up
+  locally with <b>Docker Compose</b>.
+</p>
 
-A full e-commerce store built as **11 polyglot microservices** that talk to each
-other over **gRPC** — built to deploy on **AWS EKS**.
-
-[![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)](https://go.dev)
-[![Node.js](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org)
-[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://python.org)
-[![Java](https://img.shields.io/badge/Java-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org)
-[![.NET](https://img.shields.io/badge/.NET-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com)
-[![gRPC](https://img.shields.io/badge/gRPC-244c5a?logo=grpc&logoColor=white)](https://grpc.io)
-[![EKS](https://img.shields.io/badge/AWS-EKS-232F3E?logo=amazoneks&logoColor=white)](https://aws.amazon.com/eks)
-
-</div>
+<p align="center">
+  <a href="https://go.dev"><img alt="Go" src="https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white"></a>
+  <a href="https://nodejs.org"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-339933?style=flat-square&logo=nodedotjs&logoColor=white"></a>
+  <a href="https://python.org"><img alt="Python" src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white"></a>
+  <a href="https://openjdk.org"><img alt="Java" src="https://img.shields.io/badge/Java-ED8B00?style=flat-square&logo=openjdk&logoColor=white"></a>
+  <a href="https://dotnet.microsoft.com"><img alt=".NET" src="https://img.shields.io/badge/.NET-512BD4?style=flat-square&logo=dotnet&logoColor=white"></a>
+  <a href="https://grpc.io"><img alt="gRPC" src="https://img.shields.io/badge/gRPC-244c5a?style=flat-square&logo=grpc&logoColor=white"></a>
+  <a href="https://docs.docker.com/compose/"><img alt="Docker Compose" src="https://img.shields.io/badge/Docker%20Compose-2496ED?style=flat-square&logo=docker&logoColor=white"></a>
+  <a href="https://aws.amazon.com/eks/"><img alt="AWS EKS" src="https://img.shields.io/badge/AWS%20EKS-232F3E?style=flat-square&logo=amazoneks&logoColor=white"></a>
+</p>
 
 ---
 
-## About
+## What is this?
 
-Online Boutique is a web-based e-commerce demo where users can **browse
-products**, **add items to a cart**, and **place orders** end-to-end. Each
-microservice is written in a different language, runs in its own container, and
-communicates with the others over gRPC.
+**Online Boutique** is a working e-commerce storefront where users can browse
+products, manage a cart, and place orders from start to finish. It's a learning
+project that demonstrates:
 
-This repository contains the **application source code and dependency files
-only**. It is ready to be deployed to an **AWS EKS cluster** — no deployment or
-infrastructure files are included.
+- A **polyglot microservice architecture** — Go, Node.js, Python, Java & .NET
+- **Synchronous gRPC** communication between services
+- **Containerized** services, each with its own `Dockerfile`
+- Ready for orchestration on **Kubernetes / AWS EKS**
+
+> This repository ships the application **source code, dependency manifests and
+> Dockerfiles**. It is kept free of deployment/infrastructure files so you can
+> add your own.
+
+## Features
+
+- **Browse & search** a product catalog
+- **Multi-currency** pricing, with live conversion
+- **Shopping cart** backed by Redis
+- **Full checkout flow** — payment, shipping & email confirmation (all mocked)
+- **Product recommendations** & contextual ads
+- **Load testing** built in with Locust
+- **Single-command startup** with Docker Compose
 
 ## Architecture
 
-![Online Boutique architecture](docs/img/architecture-diagram.png)
+<p align="center">
+  <img src="docs/img/architecture-diagram.png" alt="Online Boutique architecture" width="720" />
+</p>
 
 ### Services at a glance
 
 | Service | Language | Port | Description |
 | --- | --- | --- | --- |
 | frontend | Go | 8080 | HTTP server that serves the website |
-| cartservice | C# (.NET) | 7070 | Stores the shopping cart (Redis / in-memory) |
+| cartservice | C# (.NET) | 7070 | Stores the shopping cart (Redis) |
 | productcatalogservice | Go | 3550 | Product catalog, search & retrieval |
 | currencyservice | Node.js | 7000 | Currency conversion |
 | paymentservice | Node.js | 50051 | Mock credit card charge |
@@ -231,8 +251,6 @@ frontend. After `docker compose up`, open the Locust web UI at
 [http://localhost:8089](http://localhost:8089), enter a user count, and watch
 your microservices get busy.
 
----
-
 ## Deploying to AWS EKS
 
 The source is designed to deploy on **Amazon EKS**. Build and push each service
@@ -253,12 +271,30 @@ Key deployment notes:
   `productcatalogservice:3550`), so each service needs a `Service` resource
   matching its name.
 
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend | Go + HTML templates |
+| Backend (Go) | checkoutservice, productcatalogservice, shippingservice, frontend |
+| Backend (Node.js) | currencyservice, paymentservice |
+| Backend (Python) | emailservice, recommendationservice, loadgenerator |
+| Backend (Java) | adservice |
+| Backend (C# / .NET) | cartservice |
+| Service communication | gRPC |
+| Data store | Redis |
+| Containerization | Docker |
+| Orchestration target | AWS EKS / Kubernetes |
+| Load testing | Locust |
+
 ## Directory Layout
 
 ```
 .
 ├── protos/                    # Protocol Buffers definitions (shared gRPC contracts)
 │   └── demo.proto
+├── docs/
+│   └── img/                   # README assets (logo, architecture diagram)
 └── src/                       # Microservice source code
     ├── adservice/             # Java (Gradle)
     ├── cartservice/           # C# (.NET)
@@ -280,8 +316,8 @@ and a `Dockerfile` for building its container image.
 
 ---
 
-<div align="center">
-
-*Built for learning cloud-native microservices, distributed systems, and gRPC.*
-
-</div>
+<p align="center">
+  Built for learning <b>cloud-native microservices</b>, <b>distributed
+  systems</b>, and <b>gRPC</b>.<br/>
+  <i>Happy shopping!</i>
+</p>
