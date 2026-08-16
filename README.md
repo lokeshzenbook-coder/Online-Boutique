@@ -43,31 +43,37 @@ infrastructure files are included.
 | productcatalogservice | Go | 3550 | Product catalog, search & retrieval |
 | currencyservice | Node.js | 7000 | Currency conversion |
 | paymentservice | Node.js | 50051 | Mock credit card charge |
-| shippingservice | Go | 50052 | Shipping cost estimates |
+| shippingservice | Go | 50051 | Shipping cost estimates |
 | emailservice | Python | 5000 | Mock order confirmation emails |
 | checkoutservice | Go | 5050 | Orchestrates payment, shipping & email |
-| recommendationservice | Python | 8081 | Product recommendations |
+| recommendationservice | Python | 8080 | Product recommendations |
 | adservice | Java | 9555 | Context-based text ads |
 | loadgenerator | Python/Locust | 8089 | Simulates realistic user traffic (optional) |
 
-> **Note on ports:** `paymentservice` and `shippingservice` both default to
-> `50051`, and `frontend` & `recommendationservice` both default to `8080`.
-> When running everything on one machine the ports above avoid the conflicts.
+> **Note on ports:** with Docker Compose every service runs in its own
+> container on the same network, so `paymentservice` and `shippingservice` can
+> both listen on `50051`, and `frontend` & `recommendationservice` on `8080`
+> without conflict. Only `frontend` (and the optional `loadgenerator` UI) are
+> published to the host.
 
 ## Getting Started
 
 ### Prerequisites
 
-| Tool | Version | Used by |
+| Tool | Version | Notes |
 | --- | --- | --- |
-| [Go](https://go.dev/dl/) | 1.25+ | frontend, checkout, product catalog, shipping |
-| [Node.js](https://nodejs.org/) | 18+ | currency, payment |
-| [Python](https://python.org/downloads/) | 3.9+ | email, recommendations, loadgenerator |
-| [Java](https://openjdk.org/) | 21+ | ads |
-| [.NET SDK](https://dotnet.microsoft.com/download) | 10+ | cart |
-| Redis *(optional)* | any | cart (falls back to in-memory) |
+| [Docker](https://docs.docker.com/get-docker/) | 24+ | Container runtime |
+| [Docker Compose](https://docs.docker.com/compose/) | v2 | Included with Docker Desktop / Docker Engine plugin |
+| [git](https://git-scm.com/) | any | To clone the repository |
 
-### Running the application locally
+> Each service builds from a `Dockerfile` in its own source directory. This
+> repository ships source and dependency files only, so add a `Dockerfile` per
+> service (or point the build contexts below at your own pre-built images).
+
+### Running everything with Docker Compose
+
+Spin up the **entire application — all 11 microservices plus Redis — with a
+single command.**
 
 **Step 1 — Clone the repository**
 
@@ -76,151 +82,154 @@ git clone https://github.com/lokeshzenbook-coder/Online-Boutique.git
 cd Online-Boutique
 ```
 
-**Step 2 — Start the backend services**
+**Step 2 — Create a `docker-compose.yml`**
 
-Open one terminal per service and run:
+Create a file named `docker-compose.yml` in the project root with this content:
 
-<details>
-<summary><b>currencyservice</b> <i>(Node.js · port 7000)</i></summary>
+```yaml
+version: "3.9"
 
-```sh
-cd src/currencyservice
-npm install
-PORT=7000 node server.js
+services:
+  redis-cart:
+    image: redis:7-alpine
+    restart: always
+
+  adservice:
+    build: ./src/adservice
+    environment:
+      - PORT=9555
+    restart: always
+
+  cartservice:
+    build: ./src/cartservice/src
+    environment:
+      - REDIS_ADDR=redis-cart:6379
+      - ASPNETCORE_URLS=http://0.0.0.0:7070
+    depends_on:
+      - redis-cart
+    restart: always
+
+  checkoutservice:
+    build: ./src/checkoutservice
+    environment:
+      - PORT=5050
+      - CART_SERVICE_ADDR=cartservice:7070
+      - CURRENCY_SERVICE_ADDR=currencyservice:7000
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - SHIPPING_SERVICE_ADDR=shippingservice:50051
+      - EMAIL_SERVICE_ADDR=emailservice:5000
+      - PAYMENT_SERVICE_ADDR=paymentservice:50051
+    restart: always
+
+  currencyservice:
+    build: ./src/currencyservice
+    environment:
+      - PORT=7000
+    restart: always
+
+  emailservice:
+    build: ./src/emailservice
+    environment:
+      - PORT=5000
+    restart: always
+
+  frontend:
+    build: ./src/frontend
+    environment:
+      - PORT=8080
+      - ENV_PLATFORM=local
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - CURRENCY_SERVICE_ADDR=currencyservice:7000
+      - CART_SERVICE_ADDR=cartservice:7070
+      - RECOMMENDATION_SERVICE_ADDR=recommendationservice:8080
+      - SHIPPING_SERVICE_ADDR=shippingservice:50051
+      - CHECKOUT_SERVICE_ADDR=checkoutservice:5050
+      - AD_SERVICE_ADDR=adservice:9555
+      - SHOPPING_ASSISTANT_SERVICE_ADDR=shoppingassistantservice:80
+    ports:
+      - "8080:8080"
+    depends_on:
+      - productcatalogservice
+      - currencyservice
+      - cartservice
+      - recommendationservice
+      - shippingservice
+      - checkoutservice
+      - adservice
+    restart: always
+
+  paymentservice:
+    build: ./src/paymentservice
+    environment:
+      - PORT=50051
+    restart: always
+
+  productcatalogservice:
+    build: ./src/productcatalogservice
+    environment:
+      - PORT=3550
+    restart: always
+
+  recommendationservice:
+    build: ./src/recommendationservice
+    environment:
+      - PORT=8080
+    restart: always
+
+  shippingservice:
+    build: ./src/shippingservice
+    environment:
+      - PORT=50051
+    restart: always
+
+  loadgenerator:
+    build: ./src/loadgenerator
+    command: ["locust", "--host", "http://frontend:8080"]
+    ports:
+      - "8089:8089"
+    depends_on:
+      - frontend
+    restart: always
 ```
 
-</details>
-
-<details>
-<summary><b>paymentservice</b> <i>(Node.js · port 50051)</i></summary>
+**Step 3 — Start everything**
 
 ```sh
-cd src/paymentservice
-npm install
-PORT=50051 node index.js
+docker compose up --build -d
 ```
 
-</details>
-
-<details>
-<summary><b>productcatalogservice</b> <i>(Go · port 3550)</i></summary>
-
-```sh
-cd src/productcatalogservice
-go run .
-```
-
-</details>
-
-<details>
-<summary><b>shippingservice</b> <i>(Go · port 50052)</i></summary>
-
-```sh
-cd src/shippingservice
-PORT=50052 go run .
-```
-
-</details>
-
-<details>
-<summary><b>emailservice</b> <i>(Python · port 5000)</i></summary>
-
-```sh
-cd src/emailservice
-pip install -r requirements.txt
-python email_server.py
-```
-
-</details>
-
-<details>
-<summary><b>adservice</b> <i>(Java · port 9555)</i></summary>
-
-```sh
-cd src/adservice
-./gradlew run
-```
-
-</details>
-
-<details>
-<summary><b>cartservice</b> <i>(C# · port 7070)</i></summary>
-
-With Redis (recommended):
-
-```sh
-docker run -d --name redis-cart -p 6379:6379 redis
-cd src/cartservice/src
-REDIS_ADDR=localhost:6379 ASPNETCORE_URLS=http://localhost:7070 dotnet run
-```
-
-Without Redis (uses an in-memory store):
-
-```sh
-cd src/cartservice/src
-ASPNETCORE_URLS=http://localhost:7070 dotnet run
-```
-
-</details>
-
-<details>
-<summary><b>recommendationservice</b> <i>(Python · port 8081)</i></summary>
-
-```sh
-cd src/recommendationservice
-pip install -r requirements.txt
-PORT=8081 python recommendation_server.py
-```
-
-</details>
-
-<details>
-<summary><b>checkoutservice</b> <i>(Go · port 5050)</i></summary>
-
-```sh
-cd src/checkoutservice
-export CART_SERVICE_ADDR=localhost:7070
-export CURRENCY_SERVICE_ADDR=localhost:7000
-export PRODUCT_CATALOG_SERVICE_ADDR=localhost:3550
-export SHIPPING_SERVICE_ADDR=localhost:50052
-export EMAIL_SERVICE_ADDR=localhost:5000
-export PAYMENT_SERVICE_ADDR=localhost:50051
-go run .
-```
-
-</details>
-
-**Step 3 — Start the frontend**
-
-```sh
-cd src/frontend
-export PORT=8080
-export ENV_PLATFORM=local
-export PRODUCT_CATALOG_SERVICE_ADDR=localhost:3550
-export CURRENCY_SERVICE_ADDR=localhost:7000
-export CART_SERVICE_ADDR=localhost:7070
-export RECOMMENDATION_SERVICE_ADDR=localhost:8081
-export SHIPPING_SERVICE_ADDR=localhost:50052
-export CHECKOUT_SERVICE_ADDR=localhost:5050
-export AD_SERVICE_ADDR=localhost:9555
-export SHOPPING_ASSISTANT_SERVICE_ADDR=localhost:80
-go run .
-```
+Compose builds and starts every service in the background. The first run takes
+a few minutes while the images are built.
 
 **Step 4 — Open the app**
 
 Visit **[http://localhost:8080](http://localhost:8080)** in your browser.
 
-### (Optional) Generate traffic with the load generator
+**Step 5 — Check status / logs**
 
 ```sh
-cd src/loadgenerator
-pip install -r requirements.txt
-locust --host http://localhost:8080
+docker compose ps        # list running services
+docker compose logs -f   # follow logs
 ```
 
-Open the Locust web UI at [http://localhost:8089](http://localhost:8089),
-enter a user count, and watch your microservices get busy.
+**Step 6 — Stop everything**
+
+```sh
+docker compose down
+```
+
+Add `-v` to also remove the named volumes:
+
+```sh
+docker compose down -v
+```
+
+### (Optional) Load testing
+
+The `loadgenerator` service simulates realistic shopping traffic against the
+frontend. After `docker compose up`, open the Locust web UI at
+[http://localhost:8089](http://localhost:8089), enter a user count, and watch
+your microservices get busy.
 
 ---
 
