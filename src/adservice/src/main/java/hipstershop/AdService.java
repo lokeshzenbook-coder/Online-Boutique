@@ -17,7 +17,6 @@
 package hipstershop;
 
 import com.google.common.collect.ImmutableListMultimap;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import hipstershop.Demo.Ad;
 import hipstershop.Demo.AdRequest;
@@ -26,7 +25,7 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.StatusRuntimeException;
 import io.grpc.health.v1.HealthCheckResponse.ServingStatus;
-import io.grpc.services.*;
+import io.grpc.services.HealthStatusManager;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -203,7 +202,6 @@ public final class AdService {
     int maxAttempts = 5;
 
     // TODO(arbrown) Implement OpenTelemetry stats
-
   }
 
   private static void initTracing() {
@@ -212,10 +210,10 @@ public final class AdService {
       return;
     }
     logger.info("Tracing enabled but temporarily unavailable");
-    logger.info("See https://github.com/GoogleCloudPlatform/microservices-demo/issues/422 for more info.");
+    logger.info(
+        "See https://github.com/GoogleCloudPlatform/microservices-demo/issues/422 for more info.");
 
     // TODO(arbrown) Implement OpenTelemetry tracing
-    
     logger.info("Tracing enabled - Stackdriver exporter initialized.");
   }
 
