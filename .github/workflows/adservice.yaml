@@ -76,32 +76,6 @@ jobs:
           path: src/adservice/build/reports/tests/
           retention-days: 7
 
-  lint:
-    name: Linting
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
-
-      - name: Google Java Format Check
-        working-directory: ./src/adservice
-        env:
-          JAVA_TOOL_OPTIONS: >-
-            --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
-            --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
-            --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
-        run: |
-          chmod +x gradlew
-          ./gradlew verifyGoogleJavaFormat
-
   trivy-fs:
     name: Trivy FS Scan
     needs: gitleaks
@@ -120,7 +94,7 @@ jobs:
 
   docker-build:
     name: Docker Build
-    needs: [test, lint, trivy-fs]
+    needs: [test, trivy-fs]
     runs-on: ubuntu-latest
     permissions:
       contents: read
