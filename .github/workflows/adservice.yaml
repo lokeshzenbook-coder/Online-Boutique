@@ -1,4 +1,4 @@
-name: AdService CI
+name: AdService CI/CD
 
 on:
   push:
@@ -8,19 +8,31 @@ on:
     branches:
       - main
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/adservice
+
 jobs:
-  ci:
+  gitleaks:
+    name: Secret Scanning
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check repository structure
-        run: |
-          pwd
-          ls -la
-          find . -maxdepth 3 -type d | sort
+  build:
+    name: Build
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -35,17 +47,170 @@ jobs:
           chmod +x gradlew
           ./gradlew build -x test -x verifyGoogleJavaFormat
 
-      - name: Test AdService
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Run Tests
         working-directory: ./src/adservice
         run: |
+          chmod +x gradlew
           ./gradlew test
 
-      - name: ESLint
+      - name: Upload Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: src/adservice/build/reports/tests/
+          retention-days: 7
+
+  lint:
+    name: Linting
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Google Java Format Check
         working-directory: ./src/adservice
         run: |
-          if [ -f package.json ]; then
-            npm ci
-            npx eslint src
-          else
-            echo "No package.json found - skipping ESLint"
-          fi
+          chmod +x gradlew
+          ./gradlew verifyGoogleJavaFormat
+
+  trivy-fs:
+    name: Trivy FS Scan
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './src/adservice'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  docker-build:
+    name: Docker Build
+    needs: [test, lint, trivy-fs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/adservice
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save Docker image
+        run: |
+          mkdir -p /tmp/docker-images
+          docker save $(docker images -q --filter=reference="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}*") | gzip > /tmp/docker-images/adservice.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/docker-images/adservice.tar.gz
+          retention-days: 1
+
+  image-scan:
+    name: Trivy Image Scan
+    needs: docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/docker-images
+
+      - name: Load Docker image
+        run: |
+          docker load < /tmp/docker-images/adservice.tar.gz
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  docker-push:
+    name: Docker Push
+    needs: [image-scan, docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/docker-images
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load and push Docker image
+        run: |
+          docker load < /tmp/docker-images/adservice.tar.gz
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
