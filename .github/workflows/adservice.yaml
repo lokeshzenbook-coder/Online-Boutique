@@ -161,6 +161,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -170,7 +176,7 @@ jobs:
             type=sha
             type=ref,event=branch
 
-      - name: Build and push Docker image
+      - name: Build and push to GHCR
         uses: docker/build-push-action@v6
         with:
           context: ./src/adservice
@@ -179,3 +185,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Tag and push to Docker Hub
+        run: |
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
