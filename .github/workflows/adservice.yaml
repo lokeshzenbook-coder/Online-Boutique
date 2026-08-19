@@ -12,13 +12,15 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: adservice
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Check repository structure
+        run: |
+          pwd
+          ls -la
+          find . -maxdepth 3 -type d | sort
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -27,20 +29,23 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Make Gradle executable
-        run: chmod +x gradlew
+      - name: Build AdService
+        working-directory: ./adservice
+        run: |
+          chmod +x gradlew
+          ./gradlew build -x test
 
-      - name: Build
-        run: ./gradlew build -x test
+      - name: Test AdService
+        working-directory: ./adservice
+        run: |
+          ./gradlew test
 
-      - name: Run tests
-        run: ./gradlew test
-
-      - name: Run ESLint
+      - name: ESLint
+        working-directory: ./adservice
         run: |
           if [ -f package.json ]; then
             npm ci
             npx eslint src
           else
-            echo "No package.json found. Skipping ESLint."
+            echo "No package.json found - skipping ESLint"
           fi
