@@ -93,6 +93,11 @@ jobs:
 
       - name: Google Java Format Check
         working-directory: ./src/adservice
+        env:
+          JAVA_TOOL_OPTIONS: >-
+            --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED
+            --add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED
+            --add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED
         run: |
           chmod +x gradlew
           ./gradlew verifyGoogleJavaFormat
