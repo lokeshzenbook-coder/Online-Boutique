@@ -70,22 +70,6 @@ googleJavaFormat {
     toolVersion '1.35.0'
 }
 
-tasks.withType(com.github.sherter.googlejavaformat.gradle.GoogleJavaFormatPlugin.FormatTask) {
-    options.forkOptions.jvmArgs += [
-        '--add-exports', 'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
-        '--add-exports', 'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
-        '--add-exports', 'jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
-    ]
-}
-
-tasks.withType(com.github.sherter.googlejavaformat.gradle.GoogleJavaFormatPlugin.VerifyTask) {
-    forkOptions.jvmArgs += [
-        '--add-exports', 'jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED',
-        '--add-exports', 'jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED',
-        '--add-exports', 'jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED',
-    ]
-}
-
 // Inform IDEs like IntelliJ IDEA, Eclipse or NetBeans about the generated code.
 sourceSets {
     main {
