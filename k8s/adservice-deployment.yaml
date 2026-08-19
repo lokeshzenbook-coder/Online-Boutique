@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: adservice
+  labels:
+    app: adservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: adservice
+  template:
+    metadata:
+      labels:
+        app: adservice
+    spec:
+      containers:
+        - name: server
+          image: ghcr.io/lokeshzenbook-coder/online-boutique/adservice:main
+          ports:
+            - containerPort: 9555
+          env:
+            - name: PORT
+              value: "9555"
+          resources:
+            requests:
+              cpu: 200m
+              memory: 300Mi
+            limits:
+              cpu: 500m
+              memory: 500Mi
+          readinessProbe:
+            grpc:
+              port: 9555
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            grpc:
+              port: 9555
+            initialDelaySeconds: 15
+            periodSeconds: 20
