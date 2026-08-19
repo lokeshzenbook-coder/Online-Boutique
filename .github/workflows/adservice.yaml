@@ -189,7 +189,8 @@ jobs:
 
       - name: Tag and push to Docker Hub
         run: |
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
+          GHCR_IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+          docker tag "$GHCR_IMAGE" ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
+          docker tag "$GHCR_IMAGE" ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
