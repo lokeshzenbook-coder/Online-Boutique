@@ -26,22 +26,22 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: gradle
 
       - name: Build AdService
-        working-directory: ./adservice
+        working-directory: ./src/adservice
         run: |
           chmod +x gradlew
           ./gradlew build -x test
 
       - name: Test AdService
-        working-directory: ./adservice
+        working-directory: ./src/adservice
         run: |
           ./gradlew test
 
       - name: ESLint
-        working-directory: ./adservice
+        working-directory: ./src/adservice
         run: |
           if [ -f package.json ]; then
             npm ci
