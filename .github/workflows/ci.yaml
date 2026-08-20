@@ -391,7 +391,7 @@ jobs:
                     recommendationservice shippingservice"
           for svc in $SERVICES; do
             echo "Loading $svc..."
-            kind load docker-image ${{ env.DOCKERHUB_REPO }}/${{ svc }}:latest --name boutique-cluster
+            kind load docker-image "$DOCKERHUB_REPO/${svc}:latest" --name boutique-cluster
           done
 
       - name: Replace image placeholders in manifests
