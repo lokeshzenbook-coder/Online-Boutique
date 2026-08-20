@@ -361,3 +361,68 @@ jobs:
                      ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
           docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
           docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
+
+  k8s-deploy:
+    name: Deploy to Kubernetes
+    needs: docker-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.31.0
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Replace image placeholders with DockerHub username
+        run: |
+          sed -i "s|DOCKERHUB_REPO|${{ secrets.DOCKERHUB_USERNAME }}|g" k8s/*.yaml
+
+      - name: Create namespace
+        run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Deploy Redis
+        run: kubectl apply -f k8s/redis.yaml
+
+      - name: Wait for Redis
+        run: kubectl rollout status deployment/redis-cart -n online-boutique --timeout=120s
+
+      - name: Deploy all services
+        run: |
+          for f in k8s/adservice.yaml k8s/cartservice.yaml k8s/checkoutservice.yaml \
+                   k8s/currencyservice.yaml k8s/emailservice.yaml k8s/frontend.yaml \
+                   k8s/loadgenerator.yaml k8s/paymentservice.yaml \
+                   k8s/productcatalogservice.yaml k8s/recommendationservice.yaml \
+                   k8s/shippingservice.yaml; do
+            kubectl apply -f "$f"
+          done
+
+      - name: Wait for all deployments
+        run: |
+          for svc in adservice cartservice checkoutservice currencyservice emailservice \
+                     frontend loadgenerator paymentservice productcatalogservice \
+                     recommendationservice shippingservice; do
+            echo "Waiting for $svc..."
+            kubectl rollout status deployment/$svc -n online-boutique --timeout=180s || true
+          done
+
+      - name: Verify deployment
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n online-boutique -o wide
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n online-boutique
+          echo ""
+          echo "=== Deployments ==="
+          kubectl get deployments -n online-boutique

@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgenerator
+  namespace: online-boutique
+  labels:
+    app: loadgenerator
+spec:
+  selector:
+    matchLabels:
+      app: loadgenerator
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: loadgenerator
+    spec:
+      containers:
+        - name: loadgenerator
+          image: DOCKERHUB_REPO/loadgenerator:latest
+          env:
+            - name: FRONTEND_ADDR
+              value: "frontend:8080"
+            - name: LOCUST_USERS
+              value: "4"
+            - name: LOCUST_SPAWN_RATE
+              value: "1"
+            - name: LOCUST_RUN_TIME
+              value: "10m"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
