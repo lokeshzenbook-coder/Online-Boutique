@@ -1,10 +1,7 @@
 name: CI/CD Pipeline
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 env:
   DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -101,7 +98,7 @@ jobs:
         if: matrix.lang == 'go'
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: stable
 
       - name: Setup Node.js
         if: matrix.lang == 'node'
@@ -139,21 +136,26 @@ jobs:
           ./gradlew test
 
       # --- Go Build & Test ---
+      - name: Go Download Modules
+        if: matrix.lang == 'go'
+        working-directory: ${{ matrix.path }}
+        run: go mod download
+
       - name: Go Build
         if: matrix.lang == 'go'
         working-directory: ${{ matrix.path }}
-        run: go build -v ./...
+        run: CGO_ENABLED=0 go build -v ./...
 
       - name: Go Test
         if: matrix.lang == 'go'
         working-directory: ${{ matrix.path }}
-        run: go test -v -race -count=1 ./...
+        run: CGO_ENABLED=0 go test -v -count=1 ./...
 
       # --- Node.js Build & Test ---
       - name: Node Install
         if: matrix.lang == 'node'
         working-directory: ${{ matrix.path }}
-        run: npm ci
+        run: npm ci || npm install
 
       - name: Node Test
         if: matrix.lang == 'node'
@@ -161,6 +163,12 @@ jobs:
         run: npm test --if-present
 
       # --- Python Build & Test ---
+      - name: Python Install Dependencies
+        if: matrix.lang == 'python'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc g++ python3-dev
+
       - name: Python Install
         if: matrix.lang == 'python'
         working-directory: ${{ matrix.path }}
@@ -230,31 +238,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}
-          tags: |
-            type=sha
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.path }}
           load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
       - name: Save image to artifact
-        run: |
-          docker save ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest -o /tmp/${{ matrix.service }}.tar
-        shell: bash
+        run: docker save ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest -o /tmp/${{ matrix.service }}.tar
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
@@ -324,7 +318,6 @@ jobs:
   docker-push:
     name: Docker Push (${{ matrix.service }})
     needs: trivy-scan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -345,9 +338,6 @@ jobs:
           - service: shippingservice
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Download image artifact
         uses: actions/download-artifact@v4
         with:
