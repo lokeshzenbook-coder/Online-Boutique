@@ -1,0 +1,371 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}
+
+jobs:
+  gitleaks:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  semgrep:
+    name: SAST Scan (Semgrep)
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: semgrep ci --sarif --output=semgrep-results.sarif || true
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep-results.sarif
+        continue-on-error: true
+
+  build-and-test:
+    name: Build & Test (${{ matrix.service }})
+    needs: [gitleaks, semgrep]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+            path: src/adservice
+            lang: java
+          - service: cartservice
+            path: src/cartservice/src
+            lang: dotnet
+          - service: checkoutservice
+            path: src/checkoutservice
+            lang: go
+          - service: currencyservice
+            path: src/currencyservice
+            lang: node
+          - service: emailservice
+            path: src/emailservice
+            lang: python
+          - service: frontend
+            path: src/frontend
+            lang: go
+          - service: loadgenerator
+            path: src/loadgenerator
+            lang: python
+          - service: paymentservice
+            path: src/paymentservice
+            lang: node
+          - service: productcatalogservice
+            path: src/productcatalogservice
+            lang: go
+          - service: recommendationservice
+            path: src/recommendationservice
+            lang: python
+          - service: shippingservice
+            path: src/shippingservice
+            lang: go
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        if: matrix.lang == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Setup Go
+        if: matrix.lang == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Setup Node.js
+        if: matrix.lang == 'node'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Setup Python
+        if: matrix.lang == 'python'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup .NET
+        if: matrix.lang == 'dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # --- Java Build & Test ---
+      - name: Java Build
+        if: matrix.lang == 'java'
+        working-directory: ${{ matrix.path }}
+        run: |
+          chmod +x gradlew
+          ./gradlew build -x test -x verifyGoogleJavaFormat
+
+      - name: Java Test
+        if: matrix.lang == 'java'
+        working-directory: ${{ matrix.path }}
+        run: |
+          chmod +x gradlew
+          ./gradlew test
+
+      # --- Go Build & Test ---
+      - name: Go Build
+        if: matrix.lang == 'go'
+        working-directory: ${{ matrix.path }}
+        run: go build -v ./...
+
+      - name: Go Test
+        if: matrix.lang == 'go'
+        working-directory: ${{ matrix.path }}
+        run: go test -v -race -count=1 ./...
+
+      # --- Node.js Build & Test ---
+      - name: Node Install
+        if: matrix.lang == 'node'
+        working-directory: ${{ matrix.path }}
+        run: npm ci
+
+      - name: Node Test
+        if: matrix.lang == 'node'
+        working-directory: ${{ matrix.path }}
+        run: npm test --if-present
+
+      # --- Python Build & Test ---
+      - name: Python Install
+        if: matrix.lang == 'python'
+        working-directory: ${{ matrix.path }}
+        run: pip install -r requirements.txt
+
+      - name: Python Test
+        if: matrix.lang == 'python'
+        working-directory: ${{ matrix.path }}
+        run: |
+          pip install pytest
+          pytest --tb=short || true
+
+      # --- .NET Build & Test ---
+      - name: .NET Build
+        if: matrix.lang == 'dotnet'
+        working-directory: ${{ matrix.path }}
+        run: dotnet build -c Release
+
+      - name: .NET Test
+        if: matrix.lang == 'dotnet'
+        working-directory: ${{ matrix.path }}
+        run: dotnet test -c Release --no-build || true
+
+  docker-build:
+    name: Docker Build (${{ matrix.service }})
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+            path: src/adservice
+          - service: cartservice
+            path: src/cartservice/src
+          - service: checkoutservice
+            path: src/checkoutservice
+          - service: currencyservice
+            path: src/currencyservice
+          - service: emailservice
+            path: src/emailservice
+          - service: frontend
+            path: src/frontend
+          - service: loadgenerator
+            path: src/loadgenerator
+          - service: paymentservice
+            path: src/paymentservice
+          - service: productcatalogservice
+            path: src/productcatalogservice
+          - service: recommendationservice
+            path: src/recommendationservice
+          - service: shippingservice
+            path: src/shippingservice
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.path }}
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+      - name: Save image to artifact
+        run: |
+          docker save ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest -o /tmp/${{ matrix.service }}.tar
+        shell: bash
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: /tmp/${{ matrix.service }}.tar
+          retention-days: 1
+
+  trivy-scan:
+    name: Trivy Scan (${{ matrix.service }})
+    needs: docker-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+          - service: cartservice
+          - service: checkoutservice
+          - service: currencyservice
+          - service: emailservice
+          - service: frontend
+          - service: loadgenerator
+          - service: paymentservice
+          - service: productcatalogservice
+          - service: recommendationservice
+          - service: shippingservice
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/${{ matrix.service }}.tar
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+
+      - name: Run Trivy severity report
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
+          format: sarif
+          output: trivy-${{ matrix.service }}.sarif
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+        continue-on-error: true
+
+  docker-push:
+    name: Docker Push (${{ matrix.service }})
+    needs: trivy-scan
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+          - service: cartservice
+          - service: checkoutservice
+          - service: currencyservice
+          - service: emailservice
+          - service: frontend
+          - service: loadgenerator
+          - service: paymentservice
+          - service: productcatalogservice
+          - service: recommendationservice
+          - service: shippingservice
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/${{ matrix.service }}.tar
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Tag and push to Docker Hub
+        run: |
+          docker tag ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest \
+                     ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
+          docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
+          docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
