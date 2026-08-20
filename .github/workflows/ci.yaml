@@ -384,13 +384,21 @@ jobs:
         with:
           version: v1.31.0
 
-      - name: Load all images into Kind
+      - name: Download all image artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: docker-image-*
+          path: /tmp/images
+          merge-multiple: true
+
+      - name: Load images into Docker and Kind
         run: |
           SERVICES="adservice cartservice checkoutservice currencyservice emailservice
                     frontend loadgenerator paymentservice productcatalogservice
                     recommendationservice shippingservice"
           for svc in $SERVICES; do
             echo "Loading $svc..."
+            docker load -i "/tmp/images/${svc}.tar"
             kind load docker-image "$DOCKERHUB_REPO/${svc}:latest" --name boutique-cluster
           done
 
