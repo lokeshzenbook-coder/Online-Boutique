@@ -363,7 +363,7 @@ jobs:
           docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
 
   k8s-deploy:
-    name: Deploy to Kubernetes
+    name: Deploy to Kind Cluster
     needs: docker-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
@@ -373,20 +373,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up kubectl
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: boutique-cluster
+          wait: 120s
+
+      - name: Install kubectl
         uses: azure/setup-kubectl@v4
         with:
           version: v1.31.0
 
-      - name: Configure kubeconfig
+      - name: Load all images into Kind
         run: |
-          mkdir -p $HOME/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
-          chmod 600 $HOME/.kube/config
+          SERVICES="adservice cartservice checkoutservice currencyservice emailservice
+                    frontend loadgenerator paymentservice productcatalogservice
+                    recommendationservice shippingservice"
+          for svc in $SERVICES; do
+            echo "Loading $svc..."
+            kind load docker-image ${{ env.DOCKERHUB_REPO }}/${{ svc }}:latest --name boutique-cluster
+          done
 
-      - name: Replace image placeholders with DockerHub username
+      - name: Replace image placeholders in manifests
         run: |
-          sed -i "s|DOCKERHUB_REPO|${{ secrets.DOCKERHUB_USERNAME }}|g" k8s/*.yaml
+          sed -i "s|DOCKERHUB_REPO|${{ env.DOCKERHUB_REPO }}|g" k8s/*.yaml
 
       - name: Create namespace
         run: kubectl apply -f k8s/namespace.yaml
