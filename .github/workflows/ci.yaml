@@ -145,12 +145,12 @@ jobs:
       - name: Go Build
         if: matrix.lang == 'go'
         working-directory: ${{ matrix.path }}
-        run: CGO_ENABLED=0 go build -v -vet=off ./...
+        run: CGO_ENABLED=0 go build -v ./...
 
       - name: Go Test
         if: matrix.lang == 'go'
         working-directory: ${{ matrix.path }}
-        run: CGO_ENABLED=0 go test -v -count=1 -vet=off ./... || true
+        run: CGO_ENABLED=0 go test -v -count=1 ./... || true
 
       # --- Node.js Build & Test ---
       - name: Node Install
