@@ -1,196 +1,196 @@
-name: AdService CI/CD
+# name: AdService CI/CD
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+# on:
+#   push:
+#     branches:
+#       - main
+#   pull_request:
+#     branches:
+#       - main
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/adservice
+# env:
+#   REGISTRY: ghcr.io
+#   IMAGE_NAME: ${{ github.repository }}/adservice
 
-jobs:
-  gitleaks:
-    name: Secret Scanning
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# jobs:
+#   gitleaks:
+#     name: Secret Scanning
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#       - name: Run Gitleaks
+#         uses: gitleaks/gitleaks-action@v2
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build:
-    name: Build
-    needs: gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   build:
+#     name: Build
+#     needs: gitleaks
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
+#       - name: Setup Java
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: '21'
+#           cache: gradle
 
-      - name: Build AdService
-        working-directory: ./src/adservice
-        run: |
-          chmod +x gradlew
-          ./gradlew build -x test -x verifyGoogleJavaFormat
+#       - name: Build AdService
+#         working-directory: ./src/adservice
+#         run: |
+#           chmod +x gradlew
+#           ./gradlew build -x test -x verifyGoogleJavaFormat
 
-  test:
-    name: Test
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   test:
+#     name: Test
+#     needs: build
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
+#       - name: Setup Java
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: '21'
+#           cache: gradle
 
-      - name: Run Tests
-        working-directory: ./src/adservice
-        run: |
-          chmod +x gradlew
-          ./gradlew test
+#       - name: Run Tests
+#         working-directory: ./src/adservice
+#         run: |
+#           chmod +x gradlew
+#           ./gradlew test
 
-      - name: Upload Test Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report
-          path: src/adservice/build/reports/tests/
-          retention-days: 7
+#       - name: Upload Test Report
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: test-report
+#           path: src/adservice/build/reports/tests/
+#           retention-days: 7
 
-  trivy-fs:
-    name: Trivy FS Scan
-    needs: gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   trivy-fs:
+#     name: Trivy FS Scan
+#     needs: gitleaks
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: './src/adservice'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
+#       - name: Run Trivy filesystem scan
+#         uses: aquasecurity/trivy-action@master
+#         with:
+#           scan-type: 'fs'
+#           scan-ref: './src/adservice'
+#           severity: 'CRITICAL,HIGH'
+#           exit-code: '1'
 
-  docker-build:
-    name: Docker Build & Scan
-    needs: [test, trivy-fs]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   docker-build:
+#     name: Docker Build & Scan
+#     needs: [test, trivy-fs]
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#       packages: write
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+#       - name: Log in to GHCR
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.REGISTRY }}
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha
-            type=ref,event=branch
+#       - name: Extract metadata
+#         id: meta
+#         uses: docker/metadata-action@v5
+#         with:
+#           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+#           tags: |
+#             type=sha
+#             type=ref,event=branch
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./src/adservice
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+#       - name: Build Docker image
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./src/adservice
+#           load: true
+#           tags: ${{ steps.meta.outputs.tags }}
+#           labels: ${{ steps.meta.outputs.labels }}
+#           cache-from: type=gha
+#           cache-to: type=gha,mode=max
 
-      - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'ghcr.io/lokeshzenbook-coder/online-boutique/adservice:main'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+#       - name: Run Trivy image scan
+#         uses: aquasecurity/trivy-action@master
+#         with:
+#           image-ref: 'ghcr.io/lokeshzenbook-coder/online-boutique/adservice:main'
+#           severity: 'CRITICAL,HIGH'
+#           exit-code: '0'
 
-  docker-push:
-    name: Docker Push
-    needs: docker-build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   docker-push:
+#     name: Docker Push
+#     needs: docker-build
+#     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#       packages: write
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+#       - name: Log in to GHCR
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ${{ env.REGISTRY }}
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+#       - name: Log in to Docker Hub
+#         uses: docker/login-action@v3
+#         with:
+#           username: ${{ secrets.DOCKERHUB_USERNAME }}
+#           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha
-            type=ref,event=branch
+#       - name: Extract metadata
+#         id: meta
+#         uses: docker/metadata-action@v5
+#         with:
+#           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+#           tags: |
+#             type=sha
+#             type=ref,event=branch
 
-      - name: Build and push to GHCR
-        uses: docker/build-push-action@v6
-        with:
-          context: ./src/adservice
-          load: true
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+#       - name: Build and push to GHCR
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./src/adservice
+#           load: true
+#           push: true
+#           tags: ${{ steps.meta.outputs.tags }}
+#           labels: ${{ steps.meta.outputs.labels }}
+#           cache-from: type=gha
+#           cache-to: type=gha,mode=max
 
-      - name: Tag and push to Docker Hub
-        run: |
-          GHCR_IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
-          docker tag "$GHCR_IMAGE" ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
-          docker tag "$GHCR_IMAGE" ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
-          docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
+#       - name: Tag and push to Docker Hub
+#         run: |
+#           GHCR_IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -1)
+#           docker tag "$GHCR_IMAGE" ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
+#           docker tag "$GHCR_IMAGE" ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
+#           docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:main
+#           docker push ${{ secrets.DOCKERHUB_USERNAME }}/adservice:sha-${{ github.sha }}
