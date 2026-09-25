@@ -114,14 +114,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: ${{ matrix.codeql_lang }}
-          source-root: ${{ matrix.path }}
-          build-mode: ${{ matrix.build_mode }}
-
-      # --- Manual build steps (compiled languages only; build-mode: manual) ---
+      # --- Runtime setup MUST happen before Initialize CodeQL. The init step
+      # prepends a tracing shim to PATH to intercept the compiler; setup-go /
+      # setup-java / setup-dotnet each re-prepend their own binary path, which
+      # would knock that shim out if they ran afterward and the build would
+      # go untraced. ---
       - name: Setup Java 21
         if: matrix.lang == 'java'
         uses: actions/setup-java@v4
@@ -130,6 +127,28 @@ jobs:
           java-version: '21'
           cache: gradle
 
+      - name: Setup Go
+        if: matrix.lang == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.path }}/go.mod
+
+      - name: Setup .NET
+        if: matrix.lang == 'dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.codeql_lang }}
+          source-root: ${{ matrix.path }}
+          build-mode: ${{ matrix.build_mode }}
+
+      # --- Manual build steps (compiled languages only; build-mode: manual).
+      # These must run through the shell CodeQL has already instrumented,
+      # so no further PATH-modifying setup actions between here and analyze. ---
       - name: Java Build
         if: matrix.lang == 'java'
         working-directory: ${{ matrix.path }}
@@ -137,22 +156,10 @@ jobs:
           chmod +x gradlew
           ./gradlew build -x test -x verifyGoogleJavaFormat
 
-      - name: Setup Go
-        if: matrix.lang == 'go'
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: ${{ matrix.path }}/go.mod
-
       - name: Go Build
         if: matrix.lang == 'go'
         working-directory: ${{ matrix.path }}
         run: CGO_ENABLED=0 go build -v ./...
-
-      - name: Setup .NET
-        if: matrix.lang == 'dotnet'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
 
       - name: .NET Build
         if: matrix.lang == 'dotnet'
