@@ -1,567 +1,567 @@
-name: CI/CD Pipeline
+# name: CI/CD Pipeline
 
-"on":
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+# "on":
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
 
-env:
-  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}
+# env:
+#   DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}
 
-jobs:
-  gitleaks:
-    name: Secret Scanning (Gitleaks)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# jobs:
+#   gitleaks:
+#     name: Secret Scanning (Gitleaks)
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#       - name: Run Gitleaks
+#         uses: gitleaks/gitleaks-action@v2
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  semgrep:
-    name: SAST Scan (Semgrep)
-    needs: gitleaks
-    runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Run Semgrep
-        run: semgrep ci --sarif --output=semgrep-results.sarif || true
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-      - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: semgrep-results.sarif
-        continue-on-error: true
+#   semgrep:
+#     name: SAST Scan (Semgrep)
+#     needs: gitleaks
+#     runs-on: ubuntu-latest
+#     container:
+#       image: semgrep/semgrep
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#       - name: Run Semgrep
+#         run: semgrep ci --sarif --output=semgrep-results.sarif || true
+#         env:
+#           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+#       - name: Upload SARIF
+#         uses: github/codeql-action/upload-sarif@v3
+#         if: always()
+#         with:
+#           sarif_file: semgrep-results.sarif
+#         continue-on-error: true
 
-  build-and-test:
-    name: Build & Test (${{ matrix.service }})
-    needs: [gitleaks, semgrep]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: adservice
-            path: src/adservice
-            lang: java
-          - service: cartservice
-            path: src/cartservice/src
-            lang: dotnet
-          - service: checkoutservice
-            path: src/checkoutservice
-            lang: go
-          - service: currencyservice
-            path: src/currencyservice
-            lang: node
-          - service: emailservice
-            path: src/emailservice
-            lang: python
-          - service: frontend
-            path: src/frontend
-            lang: go
-          - service: loadgenerator
-            path: src/loadgenerator
-            lang: python
-          - service: paymentservice
-            path: src/paymentservice
-            lang: node
-          - service: productcatalogservice
-            path: src/productcatalogservice
-            lang: go
-          - service: recommendationservice
-            path: src/recommendationservice
-            lang: python
-          - service: shippingservice
-            path: src/shippingservice
-            lang: go
+#   build-and-test:
+#     name: Build & Test (${{ matrix.service }})
+#     needs: [gitleaks, semgrep]
+#     runs-on: ubuntu-latest
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - service: adservice
+#             path: src/adservice
+#             lang: java
+#           - service: cartservice
+#             path: src/cartservice/src
+#             lang: dotnet
+#           - service: checkoutservice
+#             path: src/checkoutservice
+#             lang: go
+#           - service: currencyservice
+#             path: src/currencyservice
+#             lang: node
+#           - service: emailservice
+#             path: src/emailservice
+#             lang: python
+#           - service: frontend
+#             path: src/frontend
+#             lang: go
+#           - service: loadgenerator
+#             path: src/loadgenerator
+#             lang: python
+#           - service: paymentservice
+#             path: src/paymentservice
+#             lang: node
+#           - service: productcatalogservice
+#             path: src/productcatalogservice
+#             lang: go
+#           - service: recommendationservice
+#             path: src/recommendationservice
+#             lang: python
+#           - service: shippingservice
+#             path: src/shippingservice
+#             lang: go
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Setup Java 21
-        if: matrix.lang == 'java'
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
+#       - name: Setup Java 21
+#         if: matrix.lang == 'java'
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: temurin
+#           java-version: '21'
+#           cache: gradle
 
-      - name: Setup Go
-        if: matrix.lang == 'go'
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: ${{ matrix.path }}/go.mod
+#       - name: Setup Go
+#         if: matrix.lang == 'go'
+#         uses: actions/setup-go@v5
+#         with:
+#           go-version-file: ${{ matrix.path }}/go.mod
 
-      - name: Setup Node.js
-        if: matrix.lang == 'node'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+#       - name: Setup Node.js
+#         if: matrix.lang == 'node'
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: '20'
 
-      - name: Setup Python
-        if: matrix.lang == 'python'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+#       - name: Setup Python
+#         if: matrix.lang == 'python'
+#         uses: actions/setup-python@v5
+#         with:
+#           python-version: '3.12'
 
-      - name: Setup .NET
-        if: matrix.lang == 'dotnet'
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
+#       - name: Setup .NET
+#         if: matrix.lang == 'dotnet'
+#         uses: actions/setup-dotnet@v4
+#         with:
+#           dotnet-version: '10.0.x'
 
-      # --- Java Build & Test ---
-      - name: Java Build
-        if: matrix.lang == 'java'
-        working-directory: ${{ matrix.path }}
-        run: |
-          chmod +x gradlew
-          ./gradlew build -x test -x verifyGoogleJavaFormat
+#       # --- Java Build & Test ---
+#       - name: Java Build
+#         if: matrix.lang == 'java'
+#         working-directory: ${{ matrix.path }}
+#         run: |
+#           chmod +x gradlew
+#           ./gradlew build -x test -x verifyGoogleJavaFormat
 
-      - name: Java Test
-        if: matrix.lang == 'java'
-        working-directory: ${{ matrix.path }}
-        run: |
-          chmod +x gradlew
-          ./gradlew test || true
+#       - name: Java Test
+#         if: matrix.lang == 'java'
+#         working-directory: ${{ matrix.path }}
+#         run: |
+#           chmod +x gradlew
+#           ./gradlew test || true
 
-      # --- Go Build & Test ---
-      - name: Go Download Modules
-        if: matrix.lang == 'go'
-        working-directory: ${{ matrix.path }}
-        run: go mod download
+#       # --- Go Build & Test ---
+#       - name: Go Download Modules
+#         if: matrix.lang == 'go'
+#         working-directory: ${{ matrix.path }}
+#         run: go mod download
 
-      - name: Go Build
-        if: matrix.lang == 'go'
-        working-directory: ${{ matrix.path }}
-        run: CGO_ENABLED=0 go build -v ./...
+#       - name: Go Build
+#         if: matrix.lang == 'go'
+#         working-directory: ${{ matrix.path }}
+#         run: CGO_ENABLED=0 go build -v ./...
 
-      - name: Go Test
-        if: matrix.lang == 'go'
-        working-directory: ${{ matrix.path }}
-        run: CGO_ENABLED=0 go test -v -count=1 ./... || true
+#       - name: Go Test
+#         if: matrix.lang == 'go'
+#         working-directory: ${{ matrix.path }}
+#         run: CGO_ENABLED=0 go test -v -count=1 ./... || true
 
-      # --- Node.js Build & Test ---
-      - name: Node Install
-        if: matrix.lang == 'node'
-        working-directory: ${{ matrix.path }}
-        run: npm ci || npm install
+#       # --- Node.js Build & Test ---
+#       - name: Node Install
+#         if: matrix.lang == 'node'
+#         working-directory: ${{ matrix.path }}
+#         run: npm ci || npm install
 
-      - name: Node Test
-        if: matrix.lang == 'node'
-        working-directory: ${{ matrix.path }}
-        run: npm test --if-present || true
+#       - name: Node Test
+#         if: matrix.lang == 'node'
+#         working-directory: ${{ matrix.path }}
+#         run: npm test --if-present || true
 
-      # --- Python Build & Test ---
-      - name: Python Install System Dependencies
-        if: matrix.lang == 'python'
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gcc g++ python3-dev cmake make
+#       # --- Python Build & Test ---
+#       - name: Python Install System Dependencies
+#         if: matrix.lang == 'python'
+#         run: |
+#           sudo apt-get update -qq
+#           sudo apt-get install -y -qq gcc g++ python3-dev cmake make
 
-      - name: Python Install
-        if: matrix.lang == 'python'
-        working-directory: ${{ matrix.path }}
-        run: pip install -r requirements.txt
+#       - name: Python Install
+#         if: matrix.lang == 'python'
+#         working-directory: ${{ matrix.path }}
+#         run: pip install -r requirements.txt
 
-      - name: Python Test
-        if: matrix.lang == 'python'
-        working-directory: ${{ matrix.path }}
-        run: |
-          pip install pytest
-          pytest --tb=short || true
+#       - name: Python Test
+#         if: matrix.lang == 'python'
+#         working-directory: ${{ matrix.path }}
+#         run: |
+#           pip install pytest
+#           pytest --tb=short || true
 
-      # --- .NET Build & Test ---
-      - name: .NET Build
-        if: matrix.lang == 'dotnet'
-        working-directory: ${{ matrix.path }}
-        run: dotnet build -c Release
+#       # --- .NET Build & Test ---
+#       - name: .NET Build
+#         if: matrix.lang == 'dotnet'
+#         working-directory: ${{ matrix.path }}
+#         run: dotnet build -c Release
 
-      - name: .NET Test
-        if: matrix.lang == 'dotnet'
-        working-directory: ${{ matrix.path }}
-        run: dotnet test -c Release --no-build || true
+#       - name: .NET Test
+#         if: matrix.lang == 'dotnet'
+#         working-directory: ${{ matrix.path }}
+#         run: dotnet test -c Release --no-build || true
 
-  docker-build:
-    name: Docker Build (${{ matrix.service }})
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: adservice
-            path: src/adservice
-          - service: cartservice
-            path: src/cartservice/src
-          - service: checkoutservice
-            path: src/checkoutservice
-          - service: currencyservice
-            path: src/currencyservice
-          - service: emailservice
-            path: src/emailservice
-          - service: frontend
-            path: src/frontend
-          - service: loadgenerator
-            path: src/loadgenerator
-          - service: paymentservice
-            path: src/paymentservice
-          - service: productcatalogservice
-            path: src/productcatalogservice
-          - service: recommendationservice
-            path: src/recommendationservice
-          - service: shippingservice
-            path: src/shippingservice
+#   docker-build:
+#     name: Docker Build (${{ matrix.service }})
+#     needs: build-and-test
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - service: adservice
+#             path: src/adservice
+#           - service: cartservice
+#             path: src/cartservice/src
+#           - service: checkoutservice
+#             path: src/checkoutservice
+#           - service: currencyservice
+#             path: src/currencyservice
+#           - service: emailservice
+#             path: src/emailservice
+#           - service: frontend
+#             path: src/frontend
+#           - service: loadgenerator
+#             path: src/loadgenerator
+#           - service: paymentservice
+#             path: src/paymentservice
+#           - service: productcatalogservice
+#             path: src/productcatalogservice
+#           - service: recommendationservice
+#             path: src/recommendationservice
+#           - service: shippingservice
+#             path: src/shippingservice
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+#       - name: Log in to Docker Hub
+#         uses: docker/login-action@v3
+#         with:
+#           username: ${{ secrets.DOCKERHUB_USERNAME }}
+#           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Build Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./${{ matrix.path }}
-          load: true
-          tags: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+#       - name: Build Docker image
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: ./${{ matrix.path }}
+#           load: true
+#           tags: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
+#           cache-from: type=gha,scope=${{ matrix.service }}
+#           cache-to: type=gha,scope=${{ matrix.service }},mode=max
 
-      - name: Save image to artifact
-        run: docker save ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest -o /tmp/${{ matrix.service }}.tar
+#       - name: Save image to artifact
+#         run: docker save ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest -o /tmp/${{ matrix.service }}.tar
 
-      - name: Upload image artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image-${{ matrix.service }}
-          path: /tmp/${{ matrix.service }}.tar
-          retention-days: 1
+#       - name: Upload image artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: docker-image-${{ matrix.service }}
+#           path: /tmp/${{ matrix.service }}.tar
+#           retention-days: 1
 
-  trivy-scan:
-    name: Trivy Scan (${{ matrix.service }})
-    needs: docker-build
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: adservice
-          - service: cartservice
-          - service: checkoutservice
-          - service: currencyservice
-          - service: emailservice
-          - service: frontend
-          - service: loadgenerator
-          - service: paymentservice
-          - service: productcatalogservice
-          - service: recommendationservice
-          - service: shippingservice
+#   trivy-scan:
+#     name: Trivy Scan (${{ matrix.service }})
+#     needs: docker-build
+#     runs-on: ubuntu-latest
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - service: adservice
+#           - service: cartservice
+#           - service: checkoutservice
+#           - service: currencyservice
+#           - service: emailservice
+#           - service: frontend
+#           - service: loadgenerator
+#           - service: paymentservice
+#           - service: productcatalogservice
+#           - service: recommendationservice
+#           - service: shippingservice
 
-    steps:
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image-${{ matrix.service }}
-          path: /tmp
+#     steps:
+#       - name: Download image artifact
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: docker-image-${{ matrix.service }}
+#           path: /tmp
 
-      - name: Load image
-        run: docker load -i /tmp/${{ matrix.service }}.tar
+#       - name: Load image
+#         run: docker load -i /tmp/${{ matrix.service }}.tar
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
-          format: table
-          exit-code: '0'
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          vuln-type: os,library
+#       - name: Run Trivy vulnerability scanner
+#         uses: aquasecurity/trivy-action@master
+#         with:
+#           image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
+#           format: table
+#           exit-code: '0'
+#           ignore-unfixed: true
+#           severity: CRITICAL,HIGH
+#           vuln-type: os,library
 
-      - name: Run Trivy severity report
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
-          format: sarif
-          output: trivy-${{ matrix.service }}.sarif
-          exit-code: '0'
-          ignore-unfixed: true
-          severity: CRITICAL,HIGH
-          vuln-type: os,library
+#       - name: Run Trivy severity report
+#         uses: aquasecurity/trivy-action@master
+#         with:
+#           image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
+#           format: sarif
+#           output: trivy-${{ matrix.service }}.sarif
+#           exit-code: '0'
+#           ignore-unfixed: true
+#           severity: CRITICAL,HIGH
+#           vuln-type: os,library
 
-      - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-${{ matrix.service }}.sarif
-        continue-on-error: true
+#       - name: Upload Trivy SARIF
+#         uses: github/codeql-action/upload-sarif@v3
+#         if: always()
+#         with:
+#           sarif_file: trivy-${{ matrix.service }}.sarif
+#         continue-on-error: true
 
-  docker-push:
-    name: Docker Push (${{ matrix.service }})
-    needs: trivy-scan
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: adservice
-          - service: cartservice
-          - service: checkoutservice
-          - service: currencyservice
-          - service: emailservice
-          - service: frontend
-          - service: loadgenerator
-          - service: paymentservice
-          - service: productcatalogservice
-          - service: recommendationservice
-          - service: shippingservice
+#   docker-push:
+#     name: Docker Push (${{ matrix.service }})
+#     needs: trivy-scan
+#     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#     strategy:
+#       fail-fast: false
+#       matrix:
+#         include:
+#           - service: adservice
+#           - service: cartservice
+#           - service: checkoutservice
+#           - service: currencyservice
+#           - service: emailservice
+#           - service: frontend
+#           - service: loadgenerator
+#           - service: paymentservice
+#           - service: productcatalogservice
+#           - service: recommendationservice
+#           - service: shippingservice
 
-    steps:
-      - name: Download image artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image-${{ matrix.service }}
-          path: /tmp
+#     steps:
+#       - name: Download image artifact
+#         uses: actions/download-artifact@v4
+#         with:
+#           name: docker-image-${{ matrix.service }}
+#           path: /tmp
 
-      - name: Load image
-        run: docker load -i /tmp/${{ matrix.service }}.tar
+#       - name: Load image
+#         run: docker load -i /tmp/${{ matrix.service }}.tar
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+#       - name: Log in to Docker Hub
+#         uses: docker/login-action@v3
+#         with:
+#           username: ${{ secrets.DOCKERHUB_USERNAME }}
+#           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Tag and push to Docker Hub
-        run: |
-          docker tag ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest \
-                     ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
-          docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
-          docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
+#       - name: Tag and push to Docker Hub
+#         run: |
+#           docker tag ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest \
+#                      ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
+#           docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
+#           docker push ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:sha-${{ github.sha }}
 
-  k8s-deploy:
-    name: Deploy to Kind Cluster
-    needs: docker-push
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+#   k8s-deploy:
+#     name: Deploy to Kind Cluster
+#     needs: docker-push
+#     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Create Kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: boutique-cluster
-          wait: 120s
+#       - name: Create Kind cluster
+#         uses: helm/kind-action@v1
+#         with:
+#           cluster_name: boutique-cluster
+#           wait: 120s
 
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: v1.31.0
+#       - name: Install kubectl
+#         uses: azure/setup-kubectl@v4
+#         with:
+#           version: v1.31.0
 
-      - name: Download all image artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: docker-image-*
-          path: /tmp/images
-          merge-multiple: true
+#       - name: Download all image artifacts
+#         uses: actions/download-artifact@v4
+#         with:
+#           pattern: docker-image-*
+#           path: /tmp/images
+#           merge-multiple: true
 
-      - name: Load images into Docker and Kind
-        run: |
-          SERVICES="adservice cartservice checkoutservice currencyservice emailservice
-                    frontend loadgenerator paymentservice productcatalogservice
-                    recommendationservice shippingservice"
-          for svc in $SERVICES; do
-            echo "Loading $svc..."
-            docker load -i "/tmp/images/${svc}.tar"
-            kind load docker-image "$DOCKERHUB_REPO/${svc}:latest" --name boutique-cluster
-          done
+#       - name: Load images into Docker and Kind
+#         run: |
+#           SERVICES="adservice cartservice checkoutservice currencyservice emailservice
+#                     frontend loadgenerator paymentservice productcatalogservice
+#                     recommendationservice shippingservice"
+#           for svc in $SERVICES; do
+#             echo "Loading $svc..."
+#             docker load -i "/tmp/images/${svc}.tar"
+#             kind load docker-image "$DOCKERHUB_REPO/${svc}:latest" --name boutique-cluster
+#           done
 
-      - name: Replace image placeholders in manifests
-        run: |
-          sed -i "s|DOCKERHUB_REPO|${{ env.DOCKERHUB_REPO }}|g" k8s/*.yaml
+#       - name: Replace image placeholders in manifests
+#         run: |
+#           sed -i "s|DOCKERHUB_REPO|${{ env.DOCKERHUB_REPO }}|g" k8s/*.yaml
 
-      - name: Create namespace
-        run: kubectl apply -f k8s/namespace.yaml
+#       - name: Create namespace
+#         run: kubectl apply -f k8s/namespace.yaml
 
-      - name: Deploy Redis
-        run: kubectl apply -f k8s/redis.yaml
+#       - name: Deploy Redis
+#         run: kubectl apply -f k8s/redis.yaml
 
-      - name: Wait for Redis
-        run: kubectl rollout status deployment/redis-cart -n online-boutique --timeout=120s
+#       - name: Wait for Redis
+#         run: kubectl rollout status deployment/redis-cart -n online-boutique --timeout=120s
 
-      - name: Deploy all services
-        run: |
-          for f in k8s/adservice.yaml k8s/cartservice.yaml k8s/checkoutservice.yaml \
-                   k8s/currencyservice.yaml k8s/emailservice.yaml k8s/frontend.yaml \
-                   k8s/loadgenerator.yaml k8s/paymentservice.yaml \
-                   k8s/productcatalogservice.yaml k8s/recommendationservice.yaml \
-                   k8s/shippingservice.yaml; do
-            kubectl apply -f "$f"
-          done
+#       - name: Deploy all services
+#         run: |
+#           for f in k8s/adservice.yaml k8s/cartservice.yaml k8s/checkoutservice.yaml \
+#                    k8s/currencyservice.yaml k8s/emailservice.yaml k8s/frontend.yaml \
+#                    k8s/loadgenerator.yaml k8s/paymentservice.yaml \
+#                    k8s/productcatalogservice.yaml k8s/recommendationservice.yaml \
+#                    k8s/shippingservice.yaml; do
+#             kubectl apply -f "$f"
+#           done
 
-      - name: Wait for all deployments
-        run: |
-          for svc in adservice cartservice checkoutservice currencyservice emailservice \
-                     frontend loadgenerator paymentservice productcatalogservice \
-                     recommendationservice shippingservice; do
-            echo "Waiting for $svc..."
-            kubectl rollout status deployment/$svc -n online-boutique --timeout=180s || true
-          done
+#       - name: Wait for all deployments
+#         run: |
+#           for svc in adservice cartservice checkoutservice currencyservice emailservice \
+#                      frontend loadgenerator paymentservice productcatalogservice \
+#                      recommendationservice shippingservice; do
+#             echo "Waiting for $svc..."
+#             kubectl rollout status deployment/$svc -n online-boutique --timeout=180s || true
+#           done
 
-      - name: Verify deployment
-        run: |
-          echo "=== Pods ==="
-          kubectl get pods -n online-boutique -o wide
-          echo ""
-          echo "=== Services ==="
-          kubectl get svc -n online-boutique
-          echo ""
-          echo "=== Deployments ==="
-          kubectl get deployments -n online-boutique
+#       - name: Verify deployment
+#         run: |
+#           echo "=== Pods ==="
+#           kubectl get pods -n online-boutique -o wide
+#           echo ""
+#           echo "=== Services ==="
+#           kubectl get svc -n online-boutique
+#           echo ""
+#           echo "=== Deployments ==="
+#           kubectl get deployments -n online-boutique
 
-  slack-notify:
-    name: Slack Notification
-    needs: [gitleaks, semgrep, build-and-test, docker-build, trivy-scan, docker-push, k8s-deploy]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Prepare build report
-        id: report
-        env:
-          R_GITLEAKS: ${{ needs.gitleaks.result }}
-          R_SEMGREP: ${{ needs.semgrep.result }}
-          R_BUILD: ${{ needs.build-and-test.result }}
-          R_DOCKER_BUILD: ${{ needs.docker-build.result }}
-          R_TRIVY: ${{ needs.trivy-scan.result }}
-          R_PUSH: ${{ needs.docker-push.result }}
-          R_DEPLOY: ${{ needs.k8s-deploy.result }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
-          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
-        run: |
-          set -euo pipefail
+#   slack-notify:
+#     name: Slack Notification
+#     needs: [gitleaks, semgrep, build-and-test, docker-build, trivy-scan, docker-push, k8s-deploy]
+#     if: always()
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: read
+#     steps:
+#       - name: Prepare build report
+#         id: report
+#         env:
+#           R_GITLEAKS: ${{ needs.gitleaks.result }}
+#           R_SEMGREP: ${{ needs.semgrep.result }}
+#           R_BUILD: ${{ needs.build-and-test.result }}
+#           R_DOCKER_BUILD: ${{ needs.docker-build.result }}
+#           R_TRIVY: ${{ needs.trivy-scan.result }}
+#           R_PUSH: ${{ needs.docker-push.result }}
+#           R_DEPLOY: ${{ needs.k8s-deploy.result }}
+#           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+#           COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+#         run: |
+#           set -euo pipefail
 
-          emoji() {
-            case "$1" in
-              success)   echo ":white_check_mark:" ;;
-              failure)   echo ":x:" ;;
-              cancelled) echo ":large_orange_circle:" ;;
-              skipped)   echo ":fast_forward:" ;;
-              *)         echo ":grey_question:" ;;
-            esac
-          }
+#           emoji() {
+#             case "$1" in
+#               success)   echo ":white_check_mark:" ;;
+#               failure)   echo ":x:" ;;
+#               cancelled) echo ":large_orange_circle:" ;;
+#               skipped)   echo ":fast_forward:" ;;
+#               *)         echo ":grey_question:" ;;
+#             esac
+#           }
 
-          OVERALL="SUCCESS"; ICON=":rocket:"
-          for r in "$R_GITLEAKS" "$R_SEMGREP" "$R_BUILD" "$R_DOCKER_BUILD" "$R_TRIVY" "$R_PUSH" "$R_DEPLOY"; do
-            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
-              OVERALL="FAILED"; ICON=":rotating_light:"
-            fi
-          done
+#           OVERALL="SUCCESS"; ICON=":rocket:"
+#           for r in "$R_GITLEAKS" "$R_SEMGREP" "$R_BUILD" "$R_DOCKER_BUILD" "$R_TRIVY" "$R_PUSH" "$R_DEPLOY"; do
+#             if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+#               OVERALL="FAILED"; ICON=":rotating_light:"
+#             fi
+#           done
 
-          stage() {
-            printf '%s *%s* — `%s`\n' "$(emoji "$2")" "$1" "$2"
-          }
+#           stage() {
+#             printf '%s *%s* — `%s`\n' "$(emoji "$2")" "$1" "$2"
+#           }
 
-          STAGES=""
-          STAGES+="$(stage "Secret Scan (Gitleaks)" "$R_GITLEAKS")"$'\n'
-          STAGES+="$(stage "SAST Scan (Semgrep)" "$R_SEMGREP")"$'\n'
-          STAGES+="$(stage "Build & Test (11 services)" "$R_BUILD")"$'\n'
-          STAGES+="$(stage "Docker Build (11 images)" "$R_DOCKER_BUILD")"$'\n'
-          STAGES+="$(stage "Trivy Vulnerability Scan" "$R_TRIVY")"$'\n'
-          STAGES+="$(stage "Docker Push (Docker Hub)" "$R_PUSH")"$'\n'
-          STAGES+="$(stage "Deploy to Kind Cluster" "$R_DEPLOY")"$'\n'
+#           STAGES=""
+#           STAGES+="$(stage "Secret Scan (Gitleaks)" "$R_GITLEAKS")"$'\n'
+#           STAGES+="$(stage "SAST Scan (Semgrep)" "$R_SEMGREP")"$'\n'
+#           STAGES+="$(stage "Build & Test (11 services)" "$R_BUILD")"$'\n'
+#           STAGES+="$(stage "Docker Build (11 images)" "$R_DOCKER_BUILD")"$'\n'
+#           STAGES+="$(stage "Trivy Vulnerability Scan" "$R_TRIVY")"$'\n'
+#           STAGES+="$(stage "Docker Push (Docker Hub)" "$R_PUSH")"$'\n'
+#           STAGES+="$(stage "Deploy to Kind Cluster" "$R_DEPLOY")"$'\n'
 
-          MSG="${COMMIT_MESSAGE:-No commit message provided}"
-          MSG="${MSG%%$'\n'*}"
-          if [ "${#MSG}" -gt 100 ]; then MSG="${MSG:0:97}..."; fi
-          AUTHOR="${COMMIT_AUTHOR:-$GITHUB_ACTOR}"
+#           MSG="${COMMIT_MESSAGE:-No commit message provided}"
+#           MSG="${MSG%%$'\n'*}"
+#           if [ "${#MSG}" -gt 100 ]; then MSG="${MSG:0:97}..."; fi
+#           AUTHOR="${COMMIT_AUTHOR:-$GITHUB_ACTOR}"
 
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+#           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+#           REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
 
-          jq -n \
-            --arg icon "$ICON" \
-            --arg overall "$OVERALL" \
-            --arg repo_name "$GITHUB_REPOSITORY" \
-            --arg repo_url "$REPO_URL" \
-            --arg branch "${GITHUB_REF_NAME}" \
-            --arg event "$GITHUB_EVENT_NAME" \
-            --arg run_number "$GITHUB_RUN_NUMBER" \
-            --arg run_url "$RUN_URL" \
-            --arg sha "${GITHUB_SHA:0:7}" \
-            --arg msg "$MSG" \
-            --arg author "$AUTHOR" \
-            --arg actor "$GITHUB_ACTOR" \
-            --arg stages "$STAGES" \
-            '{
-              text: ($icon + " Online Boutique CI/CD — " + $overall),
-              blocks: [
-                {
-                  type: "header",
-                  text: { type: "plain_text", text: ($icon + "  Online Boutique CI/CD — " + $overall), emoji: true }
-                },
-                {
-                  type: "section",
-                  fields: [
-                    { type: "mrkdwn", text: ("*Repository*\n<" + $repo_url + "|" + $repo_name + ">") },
-                    { type: "mrkdwn", text: ("*Branch*\n`" + $branch + "`") },
-                    { type: "mrkdwn", text: ("*Trigger*\n" + $event + " • Run <" + $run_url + "|#" + $run_number + ">") },
-                    { type: "mrkdwn", text: ("*Author*\n" + $author) },
-                    { type: "mrkdwn", text: ("*Commit*\n`" + $sha + "` " + $msg) },
-                    { type: "mrkdwn", text: ("*Status*\n*" + $overall + "*") }
-                  ]
-                },
-                {
-                  type: "section",
-                  text: { type: "mrkdwn", text: ("*Pipeline Stages*\n" + $stages) }
-                },
-                {
-                  type: "context",
-                  elements: [
-                    { type: "mrkdwn", text: ("Started by *" + $actor + "* • 11 microservices • :whale: Docker Hub • :kubernetes: Kind cluster") }
-                  ]
-                },
-                {
-                  type: "actions",
-                  elements: [
-                    { type: "button", style: "primary", text: { type: "plain_text", text: "View Full Logs", emoji: true }, url: $run_url }
-                  ]
-                }
-              ]
-            }' > payload.json
+#           jq -n \
+#             --arg icon "$ICON" \
+#             --arg overall "$OVERALL" \
+#             --arg repo_name "$GITHUB_REPOSITORY" \
+#             --arg repo_url "$REPO_URL" \
+#             --arg branch "${GITHUB_REF_NAME}" \
+#             --arg event "$GITHUB_EVENT_NAME" \
+#             --arg run_number "$GITHUB_RUN_NUMBER" \
+#             --arg run_url "$RUN_URL" \
+#             --arg sha "${GITHUB_SHA:0:7}" \
+#             --arg msg "$MSG" \
+#             --arg author "$AUTHOR" \
+#             --arg actor "$GITHUB_ACTOR" \
+#             --arg stages "$STAGES" \
+#             '{
+#               text: ($icon + " Online Boutique CI/CD — " + $overall),
+#               blocks: [
+#                 {
+#                   type: "header",
+#                   text: { type: "plain_text", text: ($icon + "  Online Boutique CI/CD — " + $overall), emoji: true }
+#                 },
+#                 {
+#                   type: "section",
+#                   fields: [
+#                     { type: "mrkdwn", text: ("*Repository*\n<" + $repo_url + "|" + $repo_name + ">") },
+#                     { type: "mrkdwn", text: ("*Branch*\n`" + $branch + "`") },
+#                     { type: "mrkdwn", text: ("*Trigger*\n" + $event + " • Run <" + $run_url + "|#" + $run_number + ">") },
+#                     { type: "mrkdwn", text: ("*Author*\n" + $author) },
+#                     { type: "mrkdwn", text: ("*Commit*\n`" + $sha + "` " + $msg) },
+#                     { type: "mrkdwn", text: ("*Status*\n*" + $overall + "*") }
+#                   ]
+#                 },
+#                 {
+#                   type: "section",
+#                   text: { type: "mrkdwn", text: ("*Pipeline Stages*\n" + $stages) }
+#                 },
+#                 {
+#                   type: "context",
+#                   elements: [
+#                     { type: "mrkdwn", text: ("Started by *" + $actor + "* • 11 microservices • :whale: Docker Hub • :kubernetes: Kind cluster") }
+#                   ]
+#                 },
+#                 {
+#                   type: "actions",
+#                   elements: [
+#                     { type: "button", style: "primary", text: { type: "plain_text", text: "View Full Logs", emoji: true }, url: $run_url }
+#                   ]
+#                 }
+#               ]
+#             }' > payload.json
 
-          cat payload.json
+#           cat payload.json
 
-      - name: Send Slack notification
-        uses: slackapi/slack-github-action@v2
-        with:
-          webhook-type: incoming-webhook
-          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
-          payload-file-path: payload.json
+#       - name: Send Slack notification
+#         uses: slackapi/slack-github-action@v2
+#         with:
+#           webhook-type: incoming-webhook
+#           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+#           payload-file-path: payload.json
