@@ -1,0 +1,144 @@
+name: Docker Build, SBOM & Trivy
+
+"on":
+  workflow_call:
+
+env:
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}
+
+jobs:
+  docker-build:
+    name: Docker Build (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+            path: src/adservice
+          - service: cartservice
+            path: src/cartservice/src
+          - service: checkoutservice
+            path: src/checkoutservice
+          - service: currencyservice
+            path: src/currencyservice
+          - service: emailservice
+            path: src/emailservice
+          - service: frontend
+            path: src/frontend
+          - service: loadgenerator
+            path: src/loadgenerator
+          - service: paymentservice
+            path: src/paymentservice
+          - service: productcatalogservice
+            path: src/productcatalogservice
+          - service: recommendationservice
+            path: src/recommendationservice
+          - service: shippingservice
+            path: src/shippingservice
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.path }}
+          load: true
+          tags: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.service }}.cdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cdx.json
+          retention-days: 30
+
+      - name: Save image to artifact
+        run: docker save ${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest -o /tmp/${{ matrix.service }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: /tmp/${{ matrix.service }}.tar
+          retention-days: 1
+
+  trivy-scan:
+    name: Trivy Scan (${{ matrix.service }})
+    needs: docker-build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+          - service: cartservice
+          - service: checkoutservice
+          - service: currencyservice
+          - service: emailservice
+          - service: frontend
+          - service: loadgenerator
+          - service: paymentservice
+          - service: productcatalogservice
+          - service: recommendationservice
+          - service: shippingservice
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image-${{ matrix.service }}
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/${{ matrix.service }}.tar
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
+          format: table
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+
+      - name: Run Trivy severity report
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKERHUB_REPO }}/${{ matrix.service }}:latest'
+          format: sarif
+          output: trivy-${{ matrix.service }}.sarif
+          exit-code: '0'
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.service }}.sarif
+        continue-on-error: true

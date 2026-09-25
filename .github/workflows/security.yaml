@@ -1,0 +1,292 @@
+name: Security & Code Quality
+
+"on":
+  workflow_call:
+    outputs:
+      gitleaks:
+        description: Result of the Gitleaks secret scan
+        value: ${{ jobs.collect.outputs.gitleaks }}
+      semgrep:
+        description: Result of the Semgrep SAST scan
+        value: ${{ jobs.collect.outputs.semgrep }}
+      codeql:
+        description: Result of the CodeQL analysis (all services)
+        value: ${{ jobs.collect.outputs.codeql }}
+      eslint:
+        description: Result of the ESLint scan (Node/TS services)
+        value: ${{ jobs.collect.outputs.eslint }}
+      hadolint:
+        description: Result of the Hadolint Dockerfile lint (all services)
+        value: ${{ jobs.collect.outputs.hadolint }}
+
+jobs:
+  gitleaks:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  semgrep:
+    name: SAST Scan (Semgrep)
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run Semgrep
+        run: semgrep ci --sarif --output=semgrep-results.sarif || true
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep-results.sarif
+        continue-on-error: true
+
+  codeql-analysis:
+    name: CodeQL Analysis (${{ matrix.service }})
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+            path: src/adservice
+            codeql_lang: java
+            lang: java
+            build_mode: manual
+          - service: cartservice
+            path: src/cartservice/src
+            codeql_lang: csharp
+            lang: dotnet
+            build_mode: manual
+          - service: checkoutservice
+            path: src/checkoutservice
+            codeql_lang: go
+            lang: go
+            build_mode: manual
+          - service: currencyservice
+            path: src/currencyservice
+            codeql_lang: javascript
+            lang: node
+            build_mode: none
+          - service: emailservice
+            path: src/emailservice
+            codeql_lang: python
+            lang: python
+            build_mode: none
+          - service: frontend
+            path: src/frontend
+            codeql_lang: go
+            lang: go
+            build_mode: manual
+          - service: loadgenerator
+            path: src/loadgenerator
+            codeql_lang: python
+            lang: python
+            build_mode: none
+          - service: paymentservice
+            path: src/paymentservice
+            codeql_lang: javascript
+            lang: node
+            build_mode: none
+          - service: productcatalogservice
+            path: src/productcatalogservice
+            codeql_lang: go
+            lang: go
+            build_mode: manual
+          - service: recommendationservice
+            path: src/recommendationservice
+            codeql_lang: python
+            lang: python
+            build_mode: none
+          - service: shippingservice
+            path: src/shippingservice
+            codeql_lang: go
+            lang: go
+            build_mode: manual
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- Runtime setup MUST happen before Initialize CodeQL. The init step
+      # prepends a tracing shim to PATH to intercept the compiler; setup-go /
+      # setup-java / setup-dotnet each re-prepend their own binary path, which
+      # would knock that shim out if they ran afterward and the build would
+      # go untraced. ---
+      - name: Setup Java 21
+        if: matrix.lang == 'java'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Setup Go
+        if: matrix.lang == 'go'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.path }}/go.mod
+
+      - name: Setup .NET
+        if: matrix.lang == 'dotnet'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.codeql_lang }}
+          source-root: ${{ matrix.path }}
+          build-mode: ${{ matrix.build_mode }}
+
+      # --- Manual build steps (compiled languages only; build-mode: manual).
+      # These must run through the shell CodeQL has already instrumented,
+      # so no further PATH-modifying setup actions between here and analyze. ---
+      - name: Java Build
+        if: matrix.lang == 'java'
+        working-directory: ${{ matrix.path }}
+        run: |
+          chmod +x gradlew
+          ./gradlew build -x test -x verifyGoogleJavaFormat
+
+      - name: Go Build
+        if: matrix.lang == 'go'
+        working-directory: ${{ matrix.path }}
+        run: CGO_ENABLED=0 go build -v ./...
+
+      - name: .NET Build
+        if: matrix.lang == 'dotnet'
+        working-directory: ${{ matrix.path }}
+        run: dotnet build -c Release
+
+      # --- javascript/python use build-mode: none above, so no build step runs for them ---
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.codeql_lang }}-${{ matrix.service }}"
+
+  eslint-scan:
+    name: ESLint Code Scan (${{ matrix.service }})
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: currencyservice
+            path: src/currencyservice
+          - service: paymentservice
+            path: src/paymentservice
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.path }}
+        run: npm ci || npm install
+
+      - name: Run ESLint
+        working-directory: ${{ matrix.path }}
+        run: |
+          npx eslint . --ext .js,.ts --format sarif --output-file eslint-${{ matrix.service }}.sarif || true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: ${{ matrix.path }}/eslint-${{ matrix.service }}.sarif
+        continue-on-error: true
+
+  hadolint-lint:
+    name: Hadolint Dockerfile Lint (${{ matrix.service }})
+    needs: gitleaks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: adservice
+            path: src/adservice
+          - service: cartservice
+            path: src/cartservice/src
+          - service: checkoutservice
+            path: src/checkoutservice
+          - service: currencyservice
+            path: src/currencyservice
+          - service: emailservice
+            path: src/emailservice
+          - service: frontend
+            path: src/frontend
+          - service: loadgenerator
+            path: src/loadgenerator
+          - service: paymentservice
+            path: src/paymentservice
+          - service: productcatalogservice
+            path: src/productcatalogservice
+          - service: recommendationservice
+            path: src/recommendationservice
+          - service: shippingservice
+            path: src/shippingservice
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ matrix.path }}/Dockerfile
+          format: sarif
+          output-file: hadolint-${{ matrix.service }}.sarif
+          no-fail: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: hadolint-${{ matrix.service }}.sarif
+        continue-on-error: true
+
+  collect:
+    name: Collect Security Results
+    needs: [gitleaks, semgrep, codeql-analysis, eslint-scan, hadolint-lint]
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      gitleaks: ${{ steps.set.outputs.gitleaks }}
+      semgrep: ${{ steps.set.outputs.semgrep }}
+      codeql: ${{ steps.set.outputs.codeql }}
+      eslint: ${{ steps.set.outputs.eslint }}
+      hadolint: ${{ steps.set.outputs.hadolint }}
+    steps:
+      - id: set
+        run: |
+          echo "gitleaks=${{ needs.gitleaks.result }}" >> "$GITHUB_OUTPUT"
+          echo "semgrep=${{ needs.semgrep.result }}" >> "$GITHUB_OUTPUT"
+          echo "codeql=${{ needs.codeql-analysis.result }}" >> "$GITHUB_OUTPUT"
+          echo "eslint=${{ needs.eslint-scan.result }}" >> "$GITHUB_OUTPUT"
+          echo "hadolint=${{ needs.hadolint-lint.result }}" >> "$GITHUB_OUTPUT"

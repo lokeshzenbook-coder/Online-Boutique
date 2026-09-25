@@ -1,0 +1,179 @@
+name: Notifications
+
+"on":
+  workflow_call:
+    inputs:
+      gitleaks_result:
+        type: string
+        default: ""
+      semgrep_result:
+        type: string
+        default: ""
+      codeql_result:
+        type: string
+        default: ""
+      eslint_result:
+        type: string
+        default: ""
+      hadolint_result:
+        type: string
+        default: ""
+      build_result:
+        type: string
+        default: ""
+      docker_result:
+        type: string
+        default: ""
+      publish_result:
+        type: string
+        default: ""
+
+jobs:
+  notify:
+    name: Slack & Email Notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare build report
+        id: report
+        env:
+          R_GITLEAKS: ${{ inputs.gitleaks_result }}
+          R_SEMGREP: ${{ inputs.semgrep_result }}
+          R_CODEQL: ${{ inputs.codeql_result }}
+          R_ESLINT: ${{ inputs.eslint_result }}
+          R_HADOLINT: ${{ inputs.hadolint_result }}
+          R_BUILD: ${{ inputs.build_result }}
+          R_DOCKER: ${{ inputs.docker_result }}
+          R_PUBLISH: ${{ inputs.publish_result }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+        run: |
+          set -euo pipefail
+
+          emoji() {
+            case "$1" in
+              success)   echo ":white_check_mark:" ;;
+              failure)   echo ":x:" ;;
+              cancelled) echo ":large_orange_circle:" ;;
+              skipped)   echo ":fast_forward:" ;;
+              *)         echo ":grey_question:" ;;
+            esac
+          }
+
+          OVERALL="SUCCESS"; ICON=":rocket:"
+          for r in "$R_GITLEAKS" "$R_SEMGREP" "$R_CODEQL" "$R_ESLINT" "$R_HADOLINT" "$R_BUILD" "$R_DOCKER" "$R_PUBLISH"; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              OVERALL="FAILED"; ICON=":rotating_light:"
+            fi
+          done
+
+          stage() {
+            printf '%s *%s* — `%s`\n' "$(emoji "$2")" "$1" "$2"
+          }
+
+          STAGES=""
+          STAGES+="$(stage "Secret Scan (Gitleaks)" "$R_GITLEAKS")"$'\n'
+          STAGES+="$(stage "SAST Scan (Semgrep)" "$R_SEMGREP")"$'\n'
+          STAGES+="$(stage "CodeQL Analysis (11 services)" "$R_CODEQL")"$'\n'
+          STAGES+="$(stage "ESLint Code Scan (2 services)" "$R_ESLINT")"$'\n'
+          STAGES+="$(stage "Hadolint Dockerfile Lint (11 services)" "$R_HADOLINT")"$'\n'
+          STAGES+="$(stage "Build & Test (11 services)" "$R_BUILD")"$'\n'
+          STAGES+="$(stage "Docker Build, SBOM & Trivy" "$R_DOCKER")"$'\n'
+          STAGES+="$(stage "Publish Images (Docker Hub)" "$R_PUBLISH")"$'\n'
+
+          MSG="${COMMIT_MESSAGE:-No commit message provided}"
+          MSG="${MSG%%$'\n'*}"
+          if [ "${#MSG}" -gt 100 ]; then MSG="${MSG:0:97}..."; fi
+          AUTHOR="${COMMIT_AUTHOR:-$GITHUB_ACTOR}"
+
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+
+          jq -n \
+            --arg icon "$ICON" \
+            --arg overall "$OVERALL" \
+            --arg repo_name "$GITHUB_REPOSITORY" \
+            --arg repo_url "$REPO_URL" \
+            --arg branch "${GITHUB_REF_NAME}" \
+            --arg event "$GITHUB_EVENT_NAME" \
+            --arg run_number "$GITHUB_RUN_NUMBER" \
+            --arg run_url "$RUN_URL" \
+            --arg sha "${GITHUB_SHA:0:7}" \
+            --arg msg "$MSG" \
+            --arg author "$AUTHOR" \
+            --arg actor "$GITHUB_ACTOR" \
+            --arg stages "$STAGES" \
+            '{
+              text: ($icon + " Online Boutique CI/CD — " + $overall),
+              blocks: [
+                {
+                  type: "header",
+                  text: { type: "plain_text", text: ($icon + "  Online Boutique CI/CD — " + $overall), emoji: true }
+                },
+                {
+                  type: "section",
+                  fields: [
+                    { type: "mrkdwn", text: ("*Repository*\n<" + $repo_url + "|" + $repo_name + ">") },
+                    { type: "mrkdwn", text: ("*Branch*\n`" + $branch + "`") },
+                    { type: "mrkdwn", text: ("*Trigger*\n" + $event + " • Run <" + $run_url + "|#" + $run_number + ">") },
+                    { type: "mrkdwn", text: ("*Author*\n" + $author) },
+                    { type: "mrkdwn", text: ("*Commit*\n`" + $sha + "` " + $msg) },
+                    { type: "mrkdwn", text: ("*Status*\n*" + $overall + "*") }
+                  ]
+                },
+                {
+                  type: "section",
+                  text: { type: "mrkdwn", text: ("*Pipeline Stages*\n" + $stages) }
+                },
+                {
+                  type: "context",
+                  elements: [
+                    { type: "mrkdwn", text: ("Started by *" + $actor + "* • 11 microservices • :whale: Docker Hub") }
+                  ]
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    { type: "button", style: "primary", text: { type: "plain_text", text: "View Full Logs", emoji: true }, url: $run_url }
+                  ]
+                }
+              ]
+            }' > payload.json
+
+          {
+            echo "Online Boutique CI/CD -- $OVERALL"
+            echo ""
+            echo "Repository: $GITHUB_REPOSITORY"
+            echo "Branch:     $GITHUB_REF_NAME"
+            echo "Trigger:    $GITHUB_EVENT_NAME  (run #$GITHUB_RUN_NUMBER)"
+            echo "Author:     $AUTHOR"
+            echo "Commit:     ${GITHUB_SHA:0:7}  $MSG"
+            echo ""
+            echo "Pipeline stages:"
+            echo "$STAGES" | sed -E 's/:[a-z_]+://g; s/\*//g; s/`//g'
+            echo ""
+            echo "Full logs: $RUN_URL"
+          } > email-body.txt
+
+          echo "overall=$OVERALL" >> "$GITHUB_OUTPUT"
+
+          cat payload.json
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook-type: incoming-webhook
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          payload-file-path: payload.json
+
+      - name: Send Email notification on failure
+        if: steps.report.outputs.overall == 'FAILED'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "Online Boutique CI/CD FAILED — run #${{ github.run_number }}"
+          to: ${{ secrets.EMAIL_TO }}
+          from: ${{ secrets.EMAIL_FROM }}
+          body: file://email-body.txt
